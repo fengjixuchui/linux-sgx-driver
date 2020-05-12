@@ -72,7 +72,15 @@
 #include <linux/platform_device.h>
 
 #define DRV_DESCRIPTION "Intel SGX Driver"
-#define DRV_VERSION "0.10"
+#define DRV_VERSION "2.6.0"
+
+#ifndef MSR_IA32_FEAT_CTL
+#define MSR_IA32_FEAT_CTL MSR_IA32_FEATURE_CONTROL
+#endif
+
+#ifndef FEAT_CTL_LOCKED
+#define FEAT_CTL_LOCKED FEATURE_CONTROL_LOCKED
+#endif
 
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
 MODULE_AUTHOR("Jarkko Sakkinen <jarkko.sakkinen@linux.intel.com>");
@@ -80,9 +88,9 @@ MODULE_VERSION(DRV_VERSION);
 #ifndef X86_FEATURE_SGX
 	#define X86_FEATURE_SGX (9 * 32 + 2)
 #endif
-
-#define FEATURE_CONTROL_SGX_ENABLE                      (1<<18)
-
+#ifndef FEAT_CTL_SGX_ENABLED
+#define FEAT_CTL_SGX_ENABLED                      (1<<18)
+#endif
 /*
  * Global data.
  */
@@ -96,6 +104,7 @@ u64 sgx_encl_size_max_64;
 u64 sgx_xfrm_mask = 0x3;
 u32 sgx_misc_reserved;
 u32 sgx_xsave_size_tbl[64];
+bool sgx_has_sgx2;
 
 #ifdef CONFIG_COMPAT
 long sgx_compat_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
@@ -302,14 +311,14 @@ static int sgx_drv_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	rdmsrl(MSR_IA32_FEATURE_CONTROL, fc);
+	rdmsrl(MSR_IA32_FEAT_CTL, fc);
 
-	if (!(fc & FEATURE_CONTROL_LOCKED)) {
+	if (!(fc & FEAT_CTL_LOCKED)) {
 		pr_err("intel_sgx: the feature control MSR is not locked\n");
 		return -ENODEV;
 	}
 
-	if (!(fc & FEATURE_CONTROL_SGX_ENABLE)) {
+	if (!(fc & FEAT_CTL_SGX_ENABLED)) {
 		pr_err("intel_sgx: SGX is not enabled\n");
 		return -ENODEV;
 	}
@@ -325,6 +334,8 @@ static int sgx_drv_probe(struct platform_device *pdev)
 		pr_err("intel_sgx: CPU does not support the SGX1 instructions\n");
 		return -ENODEV;
 	}
+
+	sgx_has_sgx2 = (eax & 2) != 0;
 
 	return sgx_dev_init(&pdev->dev);
 }
